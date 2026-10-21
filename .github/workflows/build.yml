@@ -16,8 +16,18 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
-      - run: flutter build apk --release
+      - name: Build
+        run: |
+          set +e
+          flutter build apk --release > build.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            grep -E "Error|error:|e: |What went wrong|FAILURE|Exception" -A2 build.log | head -40 | while IFS= read -r l; do echo "::error::${l:0:400}"; done
+          fi
+          tail -n 40 build.log
+          exit $code
       - uses: actions/upload-artifact@v4
         with:
           name: edith-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+

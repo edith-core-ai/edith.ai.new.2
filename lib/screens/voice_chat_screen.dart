@@ -187,6 +187,11 @@ class _VoiceChatScreenState extends State<VoiceChatScreen> {
     super.dispose();
   }
 
+  // Blue while asleep, orange-red once she is awake and working.
+  Color get _orbColor => (_live || _listening || _thinking || _speaking)
+      ? const Color(0xFFFF5A1F)
+      : const Color(0xFF2E9BFF);
+
   @override
   Widget build(BuildContext context) {
     final accent = EdithTheme.electricBlue;

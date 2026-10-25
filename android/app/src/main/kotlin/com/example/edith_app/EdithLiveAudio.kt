@@ -3,7 +3,7 @@ package com.example.edith_app
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.media.AcousticEchoCanceler
+import android.media.audiofx.AcousticEchoCanceler
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioFormat
@@ -11,7 +11,7 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
-import android.media.NoiseSuppressor
+import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.os.Handler
 import android.os.Looper

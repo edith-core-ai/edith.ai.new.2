@@ -22,7 +22,7 @@ jobs:
           flutter build apk --release > build.log 2>&1
           code=$?
           if [ $code -ne 0 ]; then
-            grep -E "Error|error:|e: |What went wrong|FAILURE|Exception" -A2 build.log | head -40 | while IFS= read -r l; do echo "::error::${l:0:400}"; done
+            grep -nE "^e: |: Error: |error: |What went wrong|Execution failed|AAPT|Could not " -A3 build.log | head -60 | while IFS= read -r l; do echo "::error::${l:0:400}"; done
           fi
           tail -n 40 build.log
           exit $code

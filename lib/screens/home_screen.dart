@@ -14,6 +14,8 @@ import '../services/attachment_service.dart';
 import '../services/elevenlabs_service.dart';
 import '../services/gemini_endpoints.dart';
 import '../services/gemini_service.dart';
+import '../services/proactive_service.dart';
+import '../services/reflection_service.dart';
 import '../services/voice_out_service.dart';
 import '../services/settings_service.dart';
 import '../services/tool_executor.dart';
@@ -40,7 +42,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _memory = MemoryBrain();
   final _gemini = GeminiService();
   final _toolRouter = ToolRouter();
@@ -81,19 +83,80 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     ToolExecutor.approve = _askApproval;
-    _loadHistory();
+    WidgetsBinding.instance.addObserver(this);
+    ProactiveService.onTap = _onProactiveTap;
+    _loadHistory().then((_) => _startPresence());
     _controller.addListener(() => setState(() {}));
     if (SettingsService.wakeWordEnabled) _startWakeWord();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    ProactiveService.onTap = null;
+    _learnFromChat();
     ToolExecutor.approve = null;
     _wakeWord.stop();
     _controller.dispose();
     _scrollController.dispose();
     _player.dispose();
     super.dispose();
+  }
+
+  // ───────────────────────── presence ─────────────────────────
+
+  /// After the chat loads: open her notification message if the app was
+  /// started from one, and refresh her daily messages.
+  Future<void> _startPresence() async {
+    if (!mounted) return;
+    await ProactiveService.deliverLaunchPayload();
+    ProactiveService.refreshDaily();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _learnFromChat();
+    } else if (state == AppLifecycleState.resumed) {
+      ProactiveService.refreshDaily();
+    }
+  }
+
+  /// She reads the chat so far and keeps what is worth keeping.
+  void _learnFromChat() {
+    final id = _currentThreadId;
+    if (id == null) return;
+    final real = _messages.where((m) => !_errorIds.contains(m.id)).toList();
+    ReflectionService.reflect(id, real);
+  }
+
+  /// A notification from her was tapped: show her message as the first
+  /// line of a fresh chat.
+  Future<void> _onProactiveTap(String kind, String text) async {
+    if (!mounted) return;
+    _learnFromChat();
+    final shown = kind == 'reminder' ? 'Reminder, Boss: $text' : text;
+    String threadId;
+    if (_messages.isEmpty && _currentThreadId != null) {
+      threadId = _currentThreadId!;
+    } else {
+      final thread = await _memory.createThread();
+      threadId = thread.id;
+    }
+    final msg = Message(
+      id: _uuid.v4(),
+      role: 'edith',
+      content: shown,
+      timestamp: DateTime.now(),
+    );
+    await _memory.saveMessage(threadId, msg);
+    if (!mounted) return;
+    setState(() {
+      _currentThreadId = threadId;
+      _messages = [msg];
+    });
+    _refreshThreads();
+    _scrollToBottom();
   }
 
   // ───────────────────────── wake word ─────────────────────────
@@ -222,6 +285,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _startNewChat() async {
     // An empty chat is already a fresh start. Do not pile up empty ones.
     if (_messages.isEmpty && _currentThreadId != null) return;
+    _learnFromChat();
     final thread = await _memory.createThread();
     if (!mounted) return;
     setState(() {
@@ -233,6 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _selectThread(ChatThread thread) async {
     if (thread.id == _currentThreadId) return;
+    _learnFromChat();
     await _memory.setActiveThreadId(thread.id);
     final history = await _memory.loadMessages(thread.id);
     if (!mounted) return;
@@ -302,6 +367,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _open(Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  }
+
+  /// The wake-word listener and a live call both need the microphone, so
+  /// the listener sleeps while the voice screen is open.
+  Future<void> _openVoice() async {
+    await _wakeWord.stop();
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const VoiceChatScreen()),
+    );
+    if (mounted && SettingsService.wakeWordEnabled) _startWakeWord();
   }
 
   Future<void> _openSettings() async {
@@ -756,7 +833,7 @@ class _HomeScreenState extends State<HomeScreen> {
           DrawerFeature(
             icon: Icons.mic_none_rounded,
             label: 'Voice',
-            onTap: () => _open(const VoiceChatScreen()),
+            onTap: _openVoice,
           ),
           DrawerFeature(
             icon: Icons.videocam_outlined,
@@ -861,7 +938,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onSearch: () => setState(() => _search = !_search),
               onSend: _handleAsk,
               onPlus: _showAttachMenu,
-              onVoice: () => _open(const VoiceChatScreen()),
+              onVoice: _openVoice,
             ),
           ],
         ),

@@ -1,3 +1,35 @@
+# Round 10: she feels alive (live voice, messages first, learning, new tools)
+
+Not compiled or tested on a phone. No Flutter SDK was available. Checked by script: brackets, imports, packages. See "Not tested" below.
+
+## What is new
+1. **Live voice call (Gemini Live).** The mic button on the voice screen now starts a real-time call. Audio goes straight to Gemini and back. You can interrupt her. Tools work during the call (web, alarms, reminders, WhatsApp, phone control...). "Look at my screen" sends a screenshot into the call. Mute button at the top. If the call cannot connect, the old voice loop starts instead and a note says why.
+   - Files: `lib/services/live_voice_service.dart`, `android/.../EdithLiveAudio.kt`, `MainActivity.kt`.
+   - Model default `gemini-3.8-live`. Change it in Settings > Presence if Google renames it.
+   - If she hears herself on the speaker: Presence > "Mute my mic while she talks".
+2. **She messages first.** Morning message, evening check-in, follow-ups ("how did the exam go?") and reminders arrive as real notifications, even with the app closed and after a reboot. Tap one and the app opens with her message as the first line of a new chat.
+   - Files: `lib/services/proactive_service.dart`, `android/.../EdithProactive.kt`, manifest, `ic_stat_edith.xml`.
+   - Switch on in Settings > Presence. Off by default.
+3. **Learning after each chat.** When you leave a chat (new chat, other chat, app to background, end of a voice call) she keeps lasting facts, writes a one-line note of what you talked about, and suggests rules for herself only if you corrected her. Rules wait for your OK in Self-improvement. Passwords, PINs and card/ID numbers are never saved. Near-duplicates are skipped.
+   - Files: `lib/services/reflection_service.dart`, `lib/brains/memory_core.dart`. Chat notes show in Memory.
+4. **New tools:** `remind_me`, `list_reminders`, `cancel_reminder`, `set_timer`, `get_battery`, `get_location`.
+5. **Call survives screen-off** with a quiet "on a call" notification.
+6. **New screen:** Settings > Character > Presence (`lib/screens/presence_screen.dart`).
+
+## Fixed on the way
+- `voice_chat_screen.dart` used `_orbColor` but never defined it (build error). Now defined: blue asleep, orange-red when the call is on.
+- Memory limit raised from 60 to 80 facts. The `remember` tool now skips private data and repeats.
+
+## Not tested (be honest)
+- Nothing was compiled. The first `flutter analyze lib` may show small errors. Send them to me.
+- Live voice: Google's docs disagree on one setup field, so the app tries both layouts and up to three model names. The first real call is the real test. Echo on speaker depends on your phone.
+- Native audio and alarm code (Kotlin) was reviewed by eye only.
+- Morning and evening texts are written when you open the app, so they cannot hold live weather or news.
+- Live calls now keep running with the screen off (foreground service, `lib/services/call_keepalive.dart`). Also untested on a phone. The wake-word listener sleeps while the voice screen is open, so the two do not fight for the microphone.
+- No new packages were added.
+
+---
+
 # Round 2 (this ZIP)
 
 ## Build fixes now inside the project

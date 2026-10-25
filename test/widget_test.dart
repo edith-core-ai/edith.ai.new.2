@@ -1,4 +1,5 @@
 import 'package:edith_app/brains/memory_brain.dart';
+import 'package:edith_app/brains/memory_core.dart';
 import 'package:edith_app/services/gemini_endpoints.dart';
 import 'package:edith_app/theme/edith_theme.dart';
 import 'package:edith_app/widgets/markdown_lite.dart';
@@ -22,6 +23,12 @@ void main() {
       GeminiEndpoints.friendly(Exception(GeminiEndpoints.noKeyMarker)),
       contains('Settings'),
     );
+  });
+
+  test('private data is never saved as a memory', () {
+    expect(MemoryCore.isSafeToStore('Hilal likes strong coffee'), isTrue);
+    expect(MemoryCore.isSafeToStore('My password is hunter2'), isFalse);
+    expect(MemoryCore.isSafeToStore('Card 4111 1111 1111 1111'), isFalse);
   });
 
   testWidgets('markdown renders', (WidgetTester tester) async {

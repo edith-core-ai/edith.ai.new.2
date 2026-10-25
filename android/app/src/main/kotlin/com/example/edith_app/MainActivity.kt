@@ -1,23 +1,123 @@
 package com.example.edith_app
 
 import android.app.Notification
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import android.provider.ContactsContract
 import android.provider.Settings
 import android.telephony.SmsManager
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 
     private val ACCESS_CHANNEL = "edith/accessibility"
     private val NATIVE_CHANNEL = "edith/native_tools"
+    private val PROACTIVE_CHANNEL = "edith/proactive"
+    private val LIVE_CHANNEL = "edith/live_audio"
+    private val LIVE_MIC_CHANNEL = "edith/live_audio_in"
+
+    // Text of the notification that opened the app (cold start).
+    private var pendingPayload: String? = null
+    private var proactiveChannel: MethodChannel? = null
+    private var liveAudio: EdithLiveAudio? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        pendingPayload = intent?.getStringExtra(EdithProactive.EXTRA_PAYLOAD)
+        intent?.removeExtra(EdithProactive.EXTRA_PAYLOAD)
+        super.onCreate(savedInstanceState)
+    }
+
+    // The app was already open and the user tapped one of her notifications.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val payload = intent.getStringExtra(EdithProactive.EXTRA_PAYLOAD)
+        if (payload != null) {
+            intent.removeExtra(EdithProactive.EXTRA_PAYLOAD)
+            proactiveChannel?.invokeMethod("tapped", payload)
+        }
+    }
+
+    override fun onDestroy() {
+        liveAudio?.stop()
+        super.onDestroy()
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // ───── Proactive messages and reminders ─────
+        val proactive = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, PROACTIVE_CHANNEL)
+        proactiveChannel = proactive
+        proactive.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "schedule" -> {
+                    try {
+                        val id = call.argument<Number>("id")?.toInt() ?: -1
+                        val at = call.argument<Number>("at")?.toLong() ?: 0L
+                        val title = call.argument<String>("title") ?: "EDITH"
+                        val text = call.argument<String>("text") ?: ""
+                        val daily = call.argument<Boolean>("daily") ?: false
+                        val kind = call.argument<String>("kind") ?: "proactive"
+                        if (id < 0 || at <= 0L || text.isEmpty()) {
+                            result.error("BAD_ARGS", "id, at and text are required", null)
+                        } else {
+                            val exact = EdithProactive.schedule(
+                                this, EdithProactive.Item(id, at, title, text, daily, kind)
+                            )
+                            result.success(if (exact) "exact" else "approx")
+                        }
+                    } catch (e: Exception) {
+                        result.error("SCHEDULE_FAILED", e.message, null)
+                    }
+                }
+                "cancel" -> {
+                    val id = call.argument<Number>("id")?.toInt() ?: -1
+                    EdithProactive.cancel(this, id)
+                    result.success(true)
+                }
+                "list" -> result.success(EdithProactive.list(this))
+                "canExact" -> result.success(EdithProactive.canExact(this))
+                "takeLaunchPayload" -> {
+                    val p = pendingPayload
+                    pendingPayload = null
+                    result.success(p)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // ───── Live voice audio (microphone in, speaker out) ─────
+        liveAudio?.stop()
+        val live = EdithLiveAudio(this)
+        liveAudio = live
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LIVE_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> result.success(live.start())
+                    "stop" -> {
+                        live.stop()
+                        result.success(true)
+                    }
+                    "play" -> {
+                        val pcm = call.argument<ByteArray>("pcm")
+                        if (pcm != null) live.play(pcm)
+                        result.success(true)
+                    }
+                    "flush" -> {
+                        live.flush()
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, LIVE_MIC_CHANNEL)
+            .setStreamHandler(live)
 
         // ───── Accessibility channel ─────
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ACCESS_CHANNEL)

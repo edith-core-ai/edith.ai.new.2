@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/message.dart';
+import '../services/edith_prefs.dart';
 import '../services/gemini_endpoints.dart';
+import '../services/live_voice_service.dart';
+import '../services/reflection_service.dart';
 import '../services/tool_router.dart';
 import '../services/voice_out_service.dart';
 import '../services/voice_input_service.dart';
@@ -34,6 +37,17 @@ class _VoiceChatScreenState extends State<VoiceChatScreen> {
   bool _hands = false;
   bool _live = false; // hands-free conversation, like a live call
   bool _gotFinal = false;
+
+  // Real-time call (Gemini Live). Null when the older voice loop is used.
+  LiveVoiceService? _call;
+  bool _callConnecting = false;
+  bool _muted = false;
+  final String _sessionId = 'voice-${DateTime.now().millisecondsSinceEpoch}';
+
+  // Blue while asleep, orange-red once she is awake and working.
+  Color get _orbColor => (_live || _listening || _thinking || _speaking)
+      ? const Color(0xFFFF5A1F)
+      : const Color(0xFF2E9BFF);
 
   @override
   void initState() {
@@ -68,6 +82,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen> {
   }
 
   String get _status {
+    if (_callConnecting) return 'Connecting…';
     if (_speaking) return 'Speaking…';
     if (_thinking) return 'Thinking…';
     if (_listening) return 'Listening…';
@@ -77,16 +92,112 @@ class _VoiceChatScreenState extends State<VoiceChatScreen> {
   /// Big mic button: starts a hands-free conversation, or ends it.
   Future<void> _toggleLive() async {
     if (_live) {
-      setState(() {
-        _live = false;
-        _listening = false;
-      });
-      await _mic.stop();
-      await _tts.stop();
+      await _endLive();
       return;
     }
     setState(() => _live = true);
+    // Real-time call first; if it cannot start, the older loop takes over.
+    if (EdithPrefs.liveVoice && await _startCall()) return;
+    if (!mounted || !_live) return;
     await _startTurn();
+  }
+
+  Future<void> _endLive() async {
+    final call = _call;
+    _call = null;
+    if (mounted) {
+      setState(() {
+        _live = false;
+        _listening = false;
+        _thinking = false;
+        _speaking = false;
+        _callConnecting = false;
+        _muted = false;
+      });
+    }
+    if (call != null) await call.stop();
+    await _mic.stop();
+    await _tts.stop();
+    _learn();
+  }
+
+  /// Starts the Gemini Live call. Returns false if it could not start.
+  Future<bool> _startCall() async {
+    final call = LiveVoiceService(
+      onState: (s) {
+        if (!mounted) return;
+        setState(() {
+          _listening = s == LiveState.listening;
+          _thinking = s == LiveState.thinking;
+          _speaking = s == LiveState.speaking;
+        });
+        // The call ended by itself (connection lost, session over).
+        if (s == LiveState.ended && _call != null) {
+          _call = null;
+          setState(() {
+            _live = false;
+            _muted = false;
+          });
+          _learn();
+        }
+      },
+      onTranscript: (u, e) {
+        if (!mounted) return;
+        setState(() {
+          _transcript = u;
+          _reply = e;
+        });
+      },
+      onTurn: (u, e) {
+        final now = DateTime.now();
+        if (u.isNotEmpty) {
+          _history.add(Message(
+            id: _uuid.v4(),
+            role: 'user',
+            content: u,
+            timestamp: now,
+            isVoiceTurn: true,
+          ));
+        }
+        if (e.isNotEmpty) {
+          _history.add(Message(
+            id: _uuid.v4(),
+            role: 'edith',
+            content: e,
+            timestamp: now,
+            isVoiceTurn: true,
+          ));
+        }
+      },
+      onError: (m) {
+        if (!mounted) return;
+        setState(() => _reply = m);
+      },
+    );
+    _call = call;
+    setState(() => _callConnecting = true);
+    final err = await call.start();
+    if (!mounted) {
+      await call.stop();
+      return true;
+    }
+    setState(() => _callConnecting = false);
+    if (err != null) {
+      _call = null;
+      final short = err.length > 160 ? err.substring(0, 160) : err;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Live call unavailable, using normal voice. $short')),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /// She reads this conversation and keeps what is worth keeping.
+  void _learn() {
+    if (_history.length < 4) return;
+    ReflectionService.reflect(_sessionId, List<Message>.from(_history));
   }
 
   Future<void> _startTurn() async {
@@ -181,16 +292,15 @@ class _VoiceChatScreenState extends State<VoiceChatScreen> {
 
   @override
   void dispose() {
+    final call = _call;
+    _call = null;
+    call?.stop();
+    _learn();
     _mic.stop();
     _tts.dispose();
     _hologram.dispose();
     super.dispose();
   }
-
-  // Blue while asleep, orange-red once she is awake and working.
-  Color get _orbColor => (_live || _listening || _thinking || _speaking)
-      ? const Color(0xFFFF5A1F)
-      : const Color(0xFF2E9BFF);
 
   @override
   Widget build(BuildContext context) {
@@ -243,6 +353,18 @@ class _VoiceChatScreenState extends State<VoiceChatScreen> {
                         onPressed: () => Navigator.maybePop(context),
                       ),
                       const Spacer(),
+                      if (_call != null && !_callConnecting)
+                        IconButton(
+                          icon: Icon(
+                              _muted ? Icons.mic_off : Icons.mic_none_outlined,
+                              color: _muted
+                                  ? const Color(0xFFE5484D)
+                                  : EdithTheme.textPrimary),
+                          onPressed: () => setState(() {
+                            _muted = !_muted;
+                            _call?.setMuted(_muted);
+                          }),
+                        ),
                       GestureDetector(
                         onTap: _toggleLive,
                         child: Container(
@@ -328,8 +450,14 @@ class _VoiceChatScreenState extends State<VoiceChatScreen> {
                         builder: (_) => const LiveCameraScreen()),
                   ),
                   onShare: () {
+                    const ask = 'Look at my screen and tell me what you see.';
+                    final call = _call;
+                    if (call != null) {
+                      call.sendText(ask);
+                      return;
+                    }
                     if (_thinking) return;
-                    _ask('Look at my screen and tell me what you see.');
+                    _ask(ask);
                   },
                   onHands: () => setState(() => _hands = !_hands),
                   onMic: _toggleLive,

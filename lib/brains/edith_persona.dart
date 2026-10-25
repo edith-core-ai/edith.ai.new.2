@@ -1,4 +1,5 @@
 import '../services/settings_service.dart';
+import 'memory_core.dart';
 
 /// E.D.I.T.H. — Character & System Prompt
 ///
@@ -113,11 +114,14 @@ String get edithRules {
   return custom.isEmpty ? edithDefaultRules : custom;
 }
 
-/// Saved long-term memories, as a block for the prompt (empty if none).
+/// Saved long-term memories and short digests of recent chats, as a block
+/// for the prompt (empty if there is nothing yet).
 String get edithMemoryBlock {
   final m = SettingsService.memories;
-  if (m.isEmpty) return '';
-  return '\n\nWHAT YOU REMEMBER ABOUT HILAL\n${m.map((e) => '- $e').join('\n')}';
+  final facts = m.isEmpty
+      ? ''
+      : '\n\nWHAT YOU REMEMBER ABOUT HILAL\n${m.map((e) => '- $e').join('\n')}';
+  return '$facts${MemoryCore.digestBlock}';
 }
 
 /// Lessons she learned from her own mistakes (empty if none).

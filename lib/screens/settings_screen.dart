@@ -8,6 +8,7 @@ import '../theme/edith_theme.dart';
 import 'memory_screen.dart';
 import 'self_improve_screen.dart';
 import 'personality_screen.dart';
+import 'presence_screen.dart';
 
 /// Settings — grouped cards: AI, Voice, Tools, Phone control.
 ///
@@ -252,6 +253,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const PersonalityScreen()),
+                ),
+              ),
+              _ActionRow(
+                icon: Icons.record_voice_over_outlined,
+                title: 'Presence',
+                subtitle: 'Live voice call, messages from her, learning',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PresenceScreen()),
                 ),
               ),
               _ActionRow(

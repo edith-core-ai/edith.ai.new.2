@@ -222,6 +222,65 @@ class ToolRegistry {
               ),
             ),
 
+            FunctionDeclaration(
+              'remind_me',
+              'Schedules a real notification on the phone at a given time. '
+                  'Works even when the app is closed. Use for "remind me to '
+                  '...". Give either in_minutes or at_iso. For the calendar '
+                  'app use set_reminder instead.',
+              Schema.object(
+                properties: {
+                  'text': Schema.string(
+                      description: 'What to remind him of, short'),
+                  'in_minutes': Schema.integer(
+                      description: 'Minutes from now (use for "in 20 minutes")'),
+                  'at_iso': Schema.string(
+                      description:
+                          'Local date-time, ISO 8601, e.g. 2026-10-26T17:00:00'),
+                  'repeat_daily': Schema.boolean(
+                      description: 'True to repeat every day at that time'),
+                },
+                requiredProperties: ['text'],
+              ),
+            ),
+            FunctionDeclaration(
+              'list_reminders',
+              'Lists the reminders and messages EDITH has scheduled.',
+              Schema.object(properties: {}),
+            ),
+            FunctionDeclaration(
+              'cancel_reminder',
+              'Cancels a scheduled reminder by its id (from list_reminders).',
+              Schema.object(
+                properties: {
+                  'id': Schema.integer(description: 'Reminder id'),
+                },
+                requiredProperties: ['id'],
+              ),
+            ),
+            FunctionDeclaration(
+              'set_timer',
+              'Starts a countdown timer on the phone clock.',
+              Schema.object(
+                properties: {
+                  'seconds': Schema.integer(description: 'Length in seconds'),
+                  'label': Schema.string(description: 'Optional label'),
+                },
+                requiredProperties: ['seconds'],
+              ),
+            ),
+            FunctionDeclaration(
+              'get_battery',
+              'Returns the phone battery level and whether it is charging.',
+              Schema.object(properties: {}),
+            ),
+            FunctionDeclaration(
+              'get_location',
+              'Returns the phone\'s current GPS position (latitude and '
+                  'longitude). Use with weather or search for "near me".',
+              Schema.object(properties: {}),
+            ),
+
             // ─────────── Tier 2 ───────────
             FunctionDeclaration(
               'list_calendar_events',

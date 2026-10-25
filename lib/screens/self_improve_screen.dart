@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../brains/memory_brain.dart';
+import '../brains/memory_core.dart';
 import '../services/gemini_service.dart';
 import '../services/settings_service.dart';
 import '../theme/edith_theme.dart';
@@ -107,6 +108,44 @@ class _SelfImproveScreenState extends State<SelfImproveScreen> {
                 : const Icon(Icons.auto_fix_high),
             label: Text(_busy ? 'Reflecting…' : 'Reflect now'),
           ),
+          if (MemoryCore.pendingLessons.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Text('LEARNED FROM YOUR CHATS (approve?)',
+                style: TextStyle(
+                    color: EdithTheme.electricBlue,
+                    fontSize: 12,
+                    letterSpacing: 2,
+                    fontWeight: FontWeight.bold)),
+            for (final p in List<String>.from(MemoryCore.pendingLessons))
+              Card(
+                color: EdithTheme.surface,
+                margin: const EdgeInsets.only(top: 10),
+                child: ListTile(
+                  title: Text(p,
+                      style: const TextStyle(color: EdithTheme.textPrimary)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.check, color: Colors.greenAccent),
+                        onPressed: () async {
+                          await SettingsService.addLesson(p);
+                          await MemoryCore.removePendingLesson(p);
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.redAccent),
+                        onPressed: () async {
+                          await MemoryCore.removePendingLesson(p);
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
           if (_note != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),

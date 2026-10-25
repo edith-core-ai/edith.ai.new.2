@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../brains/memory_core.dart';
 import '../services/settings_service.dart';
 import '../theme/edith_theme.dart';
 
@@ -103,6 +104,34 @@ class _MemoryScreenState extends State<MemoryScreen> {
                     ),
                   ),
           ),
+          if (MemoryCore.digests.isNotEmpty)
+            ExpansionTile(
+              title: Text('Chat notes (${MemoryCore.digests.length})'),
+              subtitle: const Text('What she remembers you talked about'),
+              children: [
+                SizedBox(
+                  height: 220,
+                  child: ListView(
+                    children: [
+                for (var i = 0; i < MemoryCore.digests.length; i++)
+                  ListTile(
+                    dense: true,
+                    title: Text(MemoryCore.digestText(MemoryCore.digests[i])),
+                    subtitle: Text(MemoryCore.digestDate(MemoryCore.digests[i])),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close,
+                          color: EdithTheme.textSecondary),
+                      onPressed: () async {
+                        await MemoryCore.removeDigestAt(i);
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                  ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             child: Row(

@@ -299,7 +299,7 @@ static String get openWeatherKey {
     final list = List<String>.from(memories);
     if (list.any((m) => m.toLowerCase() == f.toLowerCase())) return;
     list.add(f.length > 300 ? f.substring(0, 300) : f);
-    if (list.length > 60) list.removeAt(0);
+    if (list.length > 80) list.removeAt(0);
     await _prefs.setStringList(_kMemories, list);
   }
 

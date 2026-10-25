@@ -2,6 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'theme/edith_theme.dart';
 import 'screens/splash_screen.dart';
+import 'brains/memory_core.dart';
+import 'services/edith_prefs.dart';
+import 'services/proactive_service.dart';
 import 'services/settings_service.dart';
 
 /// Any startup error is shown on screen instead of leaving a frozen logo.
@@ -46,6 +49,9 @@ class _BootState extends State<_Boot> {
   Future<void> _load() async {
     try {
       await SettingsService.init().timeout(const Duration(seconds: 15));
+      await EdithPrefs.init();
+      await MemoryCore.init();
+      ProactiveService.init();
       EdithTheme.setAccent(SettingsService.accentColor);
       if (mounted) setState(() => _ready = true);
     } catch (e) {

@@ -1,13 +1,17 @@
 import 'dart:convert';
 import 'package:android_intent_plus/android_intent.dart';
+import 'package:battery_plus/battery_plus.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../brains/memory_core.dart';
 import 'google_workspace_service.dart';
 import 'native_tools_service.dart';
 import 'phone_agent_service.dart';
 import 'phone_control_service.dart';
+import 'proactive_service.dart';
 import 'settings_service.dart';
 import 'web_service.dart';
 import 'image_gen_service.dart';
@@ -101,13 +105,22 @@ class ToolExecutor {
         case 'play_music': return await _playMusic(args);
         case 'open_app': return await _openApp(args);
         case 'remember':
-          await SettingsService.addMemory(args['fact'] as String);
-          return 'Saved to memory.';
+          final saved = await MemoryCore.addFact(args['fact'] as String);
+          return saved
+              ? 'Saved to memory.'
+              : 'Not saved: it is already known, or it looks like private '
+                  'data (password, card or ID number).';
         case 'forget':
           final n = await SettingsService.forgetMatching(args['text'] as String);
           return n == 0 ? 'Nothing matched.' : 'Forgot $n memory item(s).';
         case 'generate_image': return await _generateImage(args);
         case 'look_at_screen': return await _lookAtScreen(args);
+        case 'remind_me': return await _remindMe(args);
+        case 'list_reminders': return await _listReminders();
+        case 'cancel_reminder': return await _cancelReminder(args);
+        case 'set_timer': return await _setTimer(args);
+        case 'get_battery': return await _getBattery();
+        case 'get_location': return await _getLocation();
         case 'web_search': return await _web.search(args['query'] as String);
         case 'read_webpage': return await _web.readPage(args['url'] as String);
 
@@ -295,6 +308,82 @@ class ToolExecutor {
     return opened == null
         ? 'I could not find an app called "$name" on this phone.'
         : 'Opened $opened.';
+  }
+
+  // ─────────── Reminders, timer, battery, location ───────────
+
+  Future<String> _remindMe(Map<String, dynamic> a) async {
+    final text = (a['text'] ?? '').toString().trim();
+    if (text.isEmpty) return 'What should I remind you about?';
+    DateTime? at;
+    final mins = a['in_minutes'];
+    if (mins is num && mins > 0) {
+      at = DateTime.now().add(Duration(minutes: mins.toInt()));
+    } else if (a['at_iso'] != null) {
+      at = DateTime.tryParse(a['at_iso'].toString());
+    }
+    if (at == null) return 'I need a time: in_minutes or at_iso.';
+    return ProactiveService.remind(
+      text: text,
+      at: at,
+      daily: a['repeat_daily'] == true,
+    );
+  }
+
+  Future<String> _listReminders() async {
+    final items = await ProactiveService.list();
+    if (items.isEmpty) return 'Nothing is scheduled.';
+    final buf = StringBuffer('Scheduled (${items.length}):\n');
+    for (final i in items.take(30)) {
+      final t = i.at.toString().substring(0, 16);
+      buf.writeln('• id=${i.id} · $t${i.daily ? ' · daily' : ''} · ${i.text}');
+    }
+    return buf.toString();
+  }
+
+  Future<String> _cancelReminder(Map<String, dynamic> a) async {
+    final id = (a['id'] as num?)?.toInt();
+    if (id == null) return 'I need the reminder id.';
+    await ProactiveService.cancel(id);
+    return 'Cancelled reminder $id.';
+  }
+
+  Future<String> _setTimer(Map<String, dynamic> a) async {
+    final secs = (a['seconds'] as num?)?.toInt() ?? 0;
+    if (secs <= 0) return 'I need a length in seconds.';
+    await AndroidIntent(
+      action: 'android.intent.action.SET_TIMER',
+      arguments: {
+        'android.intent.extra.alarm.LENGTH': secs,
+        'android.intent.extra.alarm.MESSAGE': a['label'] ?? 'EDITH timer',
+        'android.intent.extra.alarm.SKIP_UI': true,
+      },
+    ).launch();
+    return 'Timer started for $secs seconds.';
+  }
+
+  Future<String> _getBattery() async {
+    final b = Battery();
+    final level = await b.batteryLevel;
+    final state = await b.batteryState;
+    return 'Battery $level%, ${state.name}.';
+  }
+
+  Future<String> _getLocation() async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      return 'Location is switched off on the phone.';
+    }
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      perm = await Geolocator.requestPermission();
+    }
+    if (perm == LocationPermission.denied ||
+        perm == LocationPermission.deniedForever) {
+      return 'Location permission is off for EDITH.';
+    }
+    final pos = await Geolocator.getCurrentPosition();
+    return 'Latitude ${pos.latitude.toStringAsFixed(5)}, longitude '
+        '${pos.longitude.toStringAsFixed(5)} (about ${pos.accuracy.round()} m).';
   }
 
   // ─────────── Tier 2 ───────────

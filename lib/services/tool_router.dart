@@ -40,6 +40,10 @@ class ToolRouter {
         .toList();
   }
 
+  /// Tool list in Gemini's JSON shape, for the live voice session.
+  List<Map<String, dynamic>> functionDeclarationsJson() =>
+      _buildFunctionDeclarationsJson();
+
   /// Manual JSON conversion — avoids depending on the SDK's internal
   /// toJson() shape, which has changed between versions.
   Map<String, dynamic> _functionDeclarationToJson(FunctionDeclaration fd) {
